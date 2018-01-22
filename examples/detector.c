@@ -1,4 +1,14 @@
+/**
+ * @Author: Andrea F. Daniele <afdaniele>
+ * @Date:   Sunday, January 21st 2018
+ * @Email:  afdaniele@ttic.edu
+ * @Last modified by:   afdaniele
+ * @Last modified time: Sunday, January 21st 2018
+ */
+
+
 #include "darknet.h"
+#include <dirent.h>
 
 static int coco_ids[] = {1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90};
 
@@ -352,7 +362,7 @@ void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char
         if(fps) fclose(fps[j]);
     }
     if(coco){
-        fseek(fp, -2, SEEK_CUR); 
+        fseek(fp, -2, SEEK_CUR);
         fprintf(fp, "\n]\n");
         fclose(fp);
     }
@@ -480,7 +490,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
         if(fps) fclose(fps[j]);
     }
     if(coco){
-        fseek(fp, -2, SEEK_CUR); 
+        fseek(fp, -2, SEEK_CUR);
         fprintf(fp, "\n]\n");
         fclose(fp);
     }
@@ -618,7 +628,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         else{
             save_image(im, "predictions");
 #ifdef OPENCV
-            cvNamedWindow("predictions", CV_WINDOW_NORMAL); 
+            cvNamedWindow("predictions", CV_WINDOW_NORMAL);
             if(fullscreen){
                 cvSetWindowProperty("predictions", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
             }
@@ -633,6 +643,82 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         free(boxes);
         free_ptrs((void **)probs, l.w*l.h*l.n);
         if (filename) break;
+    }
+}
+
+
+void test_detector_batch(char *datacfg, char *cfgfile, char *weightfile, char *dirname, float thresh, float hier_thresh, char *outfile, int fullscreen)
+{
+    list *options = read_data_cfg(datacfg);
+    char *name_list = option_find_str(options, "names", "data/names.list");
+    char **names = get_labels(name_list);
+
+    image **alphabet = load_alphabet();
+    network *net = load_network(cfgfile, weightfile, 0);
+    set_batch_network(net, 1);
+    srand(2222222);
+    double time;
+    char buff[256];
+    char output_file[256];
+    char *input = buff;
+    int j;
+    float nms=.3;
+    char * point;
+    char extension_buff[32];
+
+    // get list of images in folder
+    DIR *dir;
+    struct dirent *ent;
+    if( (dir = opendir(dirname)) != NULL ){
+        // get images only
+        while( (ent = readdir(dir)) != NULL ){
+            char* filename = ent->d_name;
+            if( (point = strrchr(filename,'.')) != NULL ){
+                if(strcmp(point,".jpg") == 0 || strcmp(point,".jpeg") == 0 || strcmp(point,".png") == 0) {
+
+                    sprintf( input, "%s/%s", dirname, filename );
+                    strncpy( output_file, input, 256 );
+                    char* ptr = strrchr(output_file,'.');
+                    sprintf( ptr, "_out\0" );
+
+                    printf( "Processing: %s\n", output_file );
+
+                    image im = load_image_color(input,0,0);
+                    image sized = letterbox_image(im, net->w, net->h);
+
+                    layer l = net->layers[net->n-1];
+
+                    box *boxes = calloc(l.w*l.h*l.n, sizeof(box));
+                    float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
+                    for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(l.classes + 1, sizeof(float *));
+                    float **masks = 0;
+                    if (l.coords > 4){
+                        masks = calloc(l.w*l.h*l.n, sizeof(float*));
+                        for(j = 0; j < l.w*l.h*l.n; ++j) masks[j] = calloc(l.coords-4, sizeof(float *));
+                    }
+
+                    float *X = sized.data;
+                    time=what_time_is_it_now();
+                    network_predict(net, X);
+
+                    get_region_boxes(l, im.w, im.h, net->w, net->h, thresh, probs, boxes, masks, 0, 0, hier_thresh, 1);
+                    if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);
+                    draw_detections(im, l.w*l.h*l.n, thresh, boxes, probs, masks, names, alphabet, l.classes);
+
+                    save_image(im, output_file);
+
+                    free_image(im);
+                    free_image(sized);
+                    free(boxes);
+                    free_ptrs((void **)probs, l.w*l.h*l.n);
+                }
+            }
+        }
+        closedir (dir);
+    } else {
+        // error opening the DIR
+        perror ("Error opening the given input directory");
+        return;
     }
 }
 
@@ -683,6 +769,7 @@ void run_detector(int argc, char **argv)
     char *weights = (argc > 5) ? argv[5] : 0;
     char *filename = (argc > 6) ? argv[6]: 0;
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
+    else if(0==strcmp(argv[2], "batch")) test_detector_batch(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
