@@ -1,4 +1,4 @@
-GPU=0
+GPU=1
 CUDNN=0
 OPENCV=0
 OPENMP=0
@@ -9,6 +9,12 @@ ARCH= -gencode arch=compute_30,code=sm_30 \
       -gencode arch=compute_50,code=[sm_50,compute_50] \
       -gencode arch=compute_52,code=[sm_52,compute_52]
 #      -gencode arch=compute_20,code=[sm_20,sm_21] \ This one is deprecated?
+
+# For Jetson Tx1 uncomment:
+# ARCH= -gencode arch=compute_51,code=[sm_51,compute_51]
+
+# For Jetson Tx2 uncomment:
+ARCH= -gencode arch=compute_62,code=[sm_62,compute_62]
 
 # This is what I use, uncomment if you know your arch and want to specify
 # ARCH= -gencode arch=compute_52,code=compute_52
