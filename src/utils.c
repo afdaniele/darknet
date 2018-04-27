@@ -82,12 +82,24 @@ int clock_gettime(int X, struct timespec *tv)
     tv->tv_nsec = t.QuadPart % 1000000000;
     return 0;
 }
+
 #elif MAC
+
+#ifdef __APPLE__
+  #include <AvailabilityMacros.h>
+  #ifndef MAC_OS_X_VERSION_10_12
+    #define MAC_OS_X_VERSION_10_12 101200
+  #endif
+#endif
+
+#define APPLE_HAVE_CLOCK_GETTIME defined(__APPLE__) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12
+
 #include <mach/clock.h>
 #include <mach/mach.h>
 
 #define CLOCK_REALTIME 0
 
+#if !APPLE_HAVE_CLOCK_GETTIME
 int clock_gettime(int X, struct timespec *tv)
 {
     clock_serv_t cclock;
@@ -99,6 +111,8 @@ int clock_gettime(int X, struct timespec *tv)
     tv->tv_nsec = mts.tv_nsec;
     return 0;
 }
+#endif
+
 #else
 #include <unistd.h>
 #endif
@@ -622,7 +636,7 @@ float mag_array(float *a, int n)
     int i;
     float sum = 0;
     for(i = 0; i < n; ++i){
-        sum += a[i]*a[i];   
+        sum += a[i]*a[i];
     }
     return sqrt(sum);
 }
@@ -719,7 +733,7 @@ float rand_normal()
 
 size_t rand_size_t()
 {
-    return  ((size_t)(rand()&0xff) << 56) | 
+    return  ((size_t)(rand()&0xff) << 56) |
         ((size_t)(rand()&0xff) << 48) |
         ((size_t)(rand()&0xff) << 40) |
         ((size_t)(rand()&0xff) << 32) |
@@ -757,4 +771,3 @@ float **one_hot_encode(float *a, int n, int k)
     }
     return t;
 }
-
